@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+set -eu -o pipefail
+
+DIRNAME=$(basename $(pwd))
+
+if [ $# -eq 0 ]; then
+    echo "No subcommand found. Use 'init <IMAGE>', 'build', 'status', 'start', 'attach', or 'stop'."
+    exit 1
+fi
+
+case $1 in
+    init)
+        if [ $# -eq 1 ]; then
+            echo "No image tag found. Try something like 'plumber init debian:latest'."
+            exit 1
+        fi
+        if [ -d .plumber ]; then
+            echo "Plumber config already exists here. Delete .plumber and try again."
+            exit 1
+        fi
+        mkdir .plumber
+        cd .plumber
+        mkdir ./homedir
+        # Dockerfile
+        echo -e "FROM $2\n" > ./Dockerfile
+        echo -e "ADD ./passwd /etc/passwd\nADD ./group /etc/group\n" >> ./Dockerfile
+        echo -e "# To install or configure additional software, add commands here." >> ./Dockerfile
+        echo -e "RUN apt-get -q update && apt-get -yq install fish\n" >> ./Dockerfile
+        echo -e "WORKDIR /project\n" >> ./Dockerfile
+        echo -e "CMD sleep infinity\n" >> ./Dockerfile
+        # .gitignore
+        echo "*" > ./.gitignore
+        # run-args
+        echo "# If you want to pass additional arguments to 'docker run', you may add them" > ./run-args
+        echo "# here. Separate each argument with a new line." >> ./run-args
+        echo -e "#\n# For example, you may wish to redirect an exposed port:" >> ./run-args
+        echo -e "#\n# -p 127.0.0.1:8080:8080\n" >> ./run-args
+	echo -e "--net host" >> ./run-args
+        cd ..
+        ;&
+    build)
+        cp /etc/passwd .plumber/passwd
+	cp /etc/group .plumber/group
+        docker build -t plumber-$DIRNAME .plumber
+        ;;
+    start)
+        mapfile -t < <(grep -vE "^#" .plumber/run-args)
+        docker run \
+            -d --rm --init \
+            -v $(pwd):/project \
+            -v $(pwd)/.plumber/homedir:$HOME \
+	    -v /tmp/.X11-unix:/tmp/.X11-unix \
+	    -e DISPLAY=${DISPLAY} \
+            --hostname $DIRNAME \
+            --name plumber-$DIRNAME \
+            ${MAPFILE[@]} \
+            plumber-$DIRNAME:latest > /dev/null
+        ;&
+    attach)
+        if [ $# -eq 2 ]; then
+            USER_ID=$(id -u $2)
+        else
+            USER_ID=$(id -u)
+        fi
+        docker exec -it -u $USER_ID --detach-keys=ctrl-d plumber-$DIRNAME fish
+        ;;
+    status)
+        if [[ -n $(docker container ls | grep plumber-$DIRNAME) ]]; then
+            echo "plumber-$DIRNAME is running."
+        else
+            echo "plumber-$DIRNAME is not running."
+        fi
+        ;;
+    stop)
+        docker stop -t 0 plumber-$DIRNAME
+        ;;
+    edit)
+        editor .plumber/Dockerfile
+        ;;
+    *)
+        echo "Bad subcommand '$1'. Use 'init <IMAGE>', 'build', 'status', 'start', 'attach', 'stop', or 'edit'."
+        exit 1
+        ;;
+esac
+
+# Copyright 2021  Bradley Gannon
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
