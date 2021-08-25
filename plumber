@@ -2,7 +2,7 @@
 
 set -eu -o pipefail
 
-DIRNAME=$(basename $(pwd))
+DIRNAME=$(basename "$(pwd)")
 
 if [ $# -eq 0 ]; then
     echo "No subcommand found. Use 'init <IMAGE>', 'build', 'status', 'start', 'attach', or 'stop'."
@@ -48,8 +48,8 @@ case $1 in
         mapfile -t < <(grep -vE "^#" .plumber/run-args)
         docker run \
             -d --rm --init \
-            -v $(pwd):/project \
-            -v $(pwd)/.plumber/homedir:$HOME \
+            -v "$(pwd)":/project \
+            -v "$(pwd)"/.plumber/homedir:$HOME \
 	    -v /tmp/.X11-unix:/tmp/.X11-unix \
 	    -e DISPLAY=${DISPLAY} \
             --hostname $DIRNAME \
